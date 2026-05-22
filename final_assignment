@@ -1,0 +1,544 @@
+CREATE SCHEMA IF NOT EXISTS hotel_booking;
+DROP TABLE IF EXISTS
+    hotel_booking.booking_services,
+    hotel_booking.booking_rooms,
+    hotel_booking.payments,
+    hotel_booking.bookings,
+    hotel_booking.services,
+    hotel_booking.rooms,
+    hotel_booking.room_types,
+    hotel_booking.hotels,
+    hotel_booking.employees,
+    hotel_booking.departments,
+    hotel_booking.guests
+CASCADE;
+
+CREATE TABLE IF NOT EXISTS hotel_booking.guests (
+    guest_id SERIAL PRIMARY KEY,
+
+    -- guest email must be unique
+    email VARCHAR(120) UNIQUE NOT NULL,
+
+    -- full name is required
+    full_name VARCHAR(150) NOT NULL,
+
+    -- gender restricted to valid options
+    gender VARCHAR(10)
+    CHECK (gender IN ('M','F','Other')),
+
+    phone_number VARCHAR(15),
+
+    birth_date DATE,
+
+    status VARCHAR(20) DEFAULT 'active',
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.hotels (
+    hotel_id SERIAL PRIMARY KEY,
+
+    name VARCHAR(150) NOT NULL,
+
+    city VARCHAR(100) NOT NULL,
+
+    rating NUMERIC(2,1)
+    CHECK (rating >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.room_types (
+    room_type_id SERIAL PRIMARY KEY,
+
+    type_name VARCHAR(50) UNIQUE NOT NULL,
+
+    nightly_rate NUMERIC(10,2)
+    CHECK (nightly_rate >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.rooms (
+    room_id SERIAL PRIMARY KEY,
+
+    hotel_id INT NOT NULL
+    REFERENCES hotel_booking.hotels(hotel_id)
+    ON DELETE CASCADE,
+
+    room_type_id INT NOT NULL
+    REFERENCES hotel_booking.room_types(room_type_id)
+    ON DELETE RESTRICT,
+
+    room_number VARCHAR(20) UNIQUE NOT NULL,
+
+    floor INT CHECK (floor >= 0),
+
+    room_status VARCHAR(20)
+    DEFAULT 'available'
+    CHECK (room_status IN ('available','occupied','maintenance'))
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.bookings (
+    booking_id SERIAL PRIMARY KEY,
+
+    guest_id INT NOT NULL
+    REFERENCES hotel_booking.guests(guest_id)
+    ON DELETE RESTRICT,
+
+    booking_date DATE NOT NULL
+    CHECK (booking_date > DATE '2026-01-01'),
+
+    check_in DATE NOT NULL,
+
+    check_out DATE NOT NULL,
+
+    status VARCHAR(20)
+    CHECK (status IN ('pending','confirmed','cancelled')),
+
+    total_amount NUMERIC(12,2)
+    DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.booking_rooms (
+    booking_room_id SERIAL PRIMARY KEY,
+
+    booking_id INT NOT NULL
+    REFERENCES hotel_booking.bookings(booking_id)
+    ON DELETE CASCADE,
+
+    room_id INT NOT NULL
+    REFERENCES hotel_booking.rooms(room_id)
+    ON DELETE RESTRICT,
+
+    nights INT NOT NULL
+    CHECK (nights > 0),
+
+    nightly_rate NUMERIC(10,2)
+    CHECK (nightly_rate >= 0),
+
+    total_price NUMERIC(12,2)
+    GENERATED ALWAYS AS (nights * nightly_rate) STORED
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.services (
+    service_id SERIAL PRIMARY KEY,
+
+    service_name VARCHAR(100) UNIQUE NOT NULL,
+
+    service_price NUMERIC(10,2)
+    CHECK (service_price >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.booking_services (
+    booking_service_id SERIAL PRIMARY KEY,
+
+    booking_id INT NOT NULL
+    REFERENCES hotel_booking.bookings(booking_id)
+    ON DELETE CASCADE,
+
+    service_id INT NOT NULL
+    REFERENCES hotel_booking.services(service_id)
+    ON DELETE RESTRICT,
+
+    quantity INT
+    CHECK (quantity > 0)
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.payments (
+    payment_id SERIAL PRIMARY KEY,
+
+    booking_id INT NOT NULL
+    REFERENCES hotel_booking.bookings(booking_id)
+    ON DELETE CASCADE,
+
+    payment_date DATE NOT NULL,
+
+    amount NUMERIC(10,2)
+    CHECK (amount >= 0),
+
+    payment_method VARCHAR(20)
+    CHECK (payment_method IN ('cash','card','online'))
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.departments (
+    department_id SERIAL PRIMARY KEY,
+
+    department_name VARCHAR(100) UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS hotel_booking.employees (
+    employee_id SERIAL PRIMARY KEY,
+
+    department_id INT NOT NULL
+    REFERENCES hotel_booking.departments(department_id)
+    ON DELETE SET NULL,
+
+    full_name VARCHAR(150) NOT NULL,
+
+    position VARCHAR(100) NOT NULL,
+
+    salary NUMERIC(10,2)
+    CHECK (salary >= 0)
+);
+
+-- PART 3: ALTER TABLE
+
+
+ALTER TABLE hotel_booking.guests
+ALTER COLUMN phone_number TYPE VARCHAR(20);
+
+
+ALTER TABLE hotel_booking.rooms
+RENAME COLUMN floor TO floor_number;
+
+ALTER TABLE hotel_booking.bookings
+ALTER COLUMN status SET DEFAULT 'pending';
+
+-- loyalty points added for reward system
+ALTER TABLE hotel_booking.guests
+ADD COLUMN loyalty_points INT DEFAULT 0;
+
+ALTER TABLE hotel_booking.guests
+ADD COLUMN nickname VARCHAR(50);
+
+ALTER TABLE hotel_booking.guests
+DROP COLUMN nickname;
+
+-- PART 4: INSERT
+
+TRUNCATE TABLE
+    hotel_booking.booking_services,
+    hotel_booking.booking_rooms,
+    hotel_booking.payments,
+    hotel_booking.bookings,
+    hotel_booking.rooms,
+    hotel_booking.room_types,
+    hotel_booking.hotels,
+    hotel_booking.services,
+    hotel_booking.employees,
+    hotel_booking.departments,
+    hotel_booking.guests
+RESTART IDENTITY CASCADE;
+
+-- guests
+INSERT INTO hotel_booking.guests
+(email, full_name, gender, phone_number, birth_date)
+VALUES
+('aminaasan333@gmail.com','Amina Asan','F','+7788035847','2008-06-15'),
+('daniel@gmail.com','Daniel Kim','M','+77085557788','1998-11-20'),
+('sara@gmail.com','Sara Lee','F','+77093334455','2000-01-05');
+
+-- hotels
+INSERT INTO hotel_booking.hotels
+(name, city, rating)
+VALUES
+('Caspian Palace','Atyrau',4.8),
+('Grand River Hotel','Almaty',4.5),
+('Astana Premium','Astana',5.0);
+
+-- room types
+INSERT INTO hotel_booking.room_types
+(type_name, nightly_rate)
+VALUES
+('Standard',25000),
+('Deluxe',45000),
+('Suite',70000);
+
+-- rooms
+INSERT INTO hotel_booking.rooms
+(hotel_id, room_type_id, room_number, floor_number)
+VALUES
+(
+(SELECT hotel_id FROM hotel_booking.hotels
+WHERE name='Caspian Palace'),
+
+(SELECT room_type_id FROM hotel_booking.room_types
+WHERE type_name='Standard'),
+
+'101',
+1
+),
+
+(
+(SELECT hotel_id FROM hotel_booking.hotels
+WHERE name='Grand River Hotel'),
+
+(SELECT room_type_id FROM hotel_booking.room_types
+WHERE type_name='Deluxe'),
+
+'205',
+2
+),
+
+(
+(SELECT hotel_id FROM hotel_booking.hotels
+WHERE name='Astana Premium'),
+
+(SELECT room_type_id FROM hotel_booking.room_types
+WHERE type_name='Suite'),
+
+'501',
+5
+);
+
+-- services
+INSERT INTO hotel_booking.services
+(service_name, service_price)
+VALUES
+('Breakfast',5000),
+('Spa',15000),
+('Airport Transfer',12000);
+
+-- departments
+INSERT INTO hotel_booking.departments
+(department_name)
+VALUES
+('Reception'),
+('Housekeeping'),
+('Management');
+
+-- employees
+INSERT INTO hotel_booking.employees
+(department_id, full_name, position, salary)
+VALUES
+(
+(SELECT department_id
+FROM hotel_booking.departments
+WHERE department_name='Reception'),
+
+'Aruzhan Bekova',
+'Receptionist',
+250000
+),
+
+(
+(SELECT department_id
+FROM hotel_booking.departments
+WHERE department_name='Housekeeping'),
+
+'Timur Aliyev',
+'Cleaner',
+180000
+),
+
+(
+(SELECT department_id
+FROM hotel_booking.departments
+WHERE department_name='Management'),
+
+'Diana Smagulova',
+'Manager',
+500000
+);
+
+-- bookings
+INSERT INTO hotel_booking.bookings
+(guest_id, booking_date, check_in, check_out)
+VALUES
+(
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='amina@gmail.com'),
+
+'2026-03-10',
+'2026-03-15',
+'2026-03-18'
+),
+
+(
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='daniel@gmail.com'),
+
+'2026-04-01',
+'2026-04-05',
+'2026-04-10'
+),
+
+(
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='sara@gmail.com'),
+
+'2026-05-02',
+'2026-05-10',
+'2026-05-15'
+);
+
+-- booking_rooms using INSERT ... SELECT
+INSERT INTO hotel_booking.booking_rooms
+(booking_id, room_id, nights, nightly_rate)
+SELECT
+    b.booking_id,
+    r.room_id,
+    x.nights,
+    rt.nightly_rate
+FROM (
+VALUES
+('amina@gmail.com','101',3),
+('daniel@gmail.com','205',5),
+('sara@gmail.com','501',5)
+) AS x(email, room_number, nights)
+
+JOIN hotel_booking.guests g
+ON g.email = x.email
+
+JOIN hotel_booking.bookings b
+ON b.guest_id = g.guest_id
+
+JOIN hotel_booking.rooms r
+ON r.room_number = x.room_number
+
+JOIN hotel_booking.room_types rt
+ON rt.room_type_id = r.room_type_id;
+
+-- booking services
+INSERT INTO hotel_booking.booking_services
+(booking_id, service_id, quantity)
+VALUES
+(
+(SELECT booking_id FROM hotel_booking.bookings
+WHERE guest_id =
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='amina@gmail.com')),
+
+(SELECT service_id FROM hotel_booking.services
+WHERE service_name='Breakfast'),
+
+2
+),
+
+(
+(SELECT booking_id FROM hotel_booking.bookings
+WHERE guest_id =
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='daniel@gmail.com')),
+
+(SELECT service_id FROM hotel_booking.services
+WHERE service_name='Spa'),
+
+1
+),
+
+(
+(SELECT booking_id FROM hotel_booking.bookings
+WHERE guest_id =
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='sara@gmail.com')),
+
+(SELECT service_id FROM hotel_booking.services
+WHERE service_name='Airport Transfer'),
+
+1
+);
+
+-- payments
+INSERT INTO hotel_booking.payments
+(booking_id, payment_date, amount, payment_method)
+VALUES
+(
+(SELECT booking_id FROM hotel_booking.bookings
+WHERE guest_id =
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='amina@gmail.com')),
+
+'2026-03-11',
+75000,
+'card'
+),
+
+(
+(SELECT booking_id FROM hotel_booking.bookings
+WHERE guest_id =
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='daniel@gmail.com')),
+
+'2026-04-02',
+225000,
+'online'
+),
+
+(
+(SELECT booking_id FROM hotel_booking.bookings
+WHERE guest_id =
+(SELECT guest_id FROM hotel_booking.guests
+WHERE email='sara@gmail.com')),
+
+'2026-05-03',
+350000,
+'cash'
+);
+
+-- PART 5: UPDATE
+-- premium guests receive loyalty points
+UPDATE hotel_booking.guests
+SET loyalty_points = 500
+WHERE guest_id IN (
+    SELECT guest_id
+    FROM hotel_booking.bookings
+    WHERE total_amount > 100000
+);
+
+-- update booking totals from room totals
+UPDATE hotel_booking.bookings b
+SET total_amount = sub.new_total
+FROM (
+    SELECT booking_id,
+           SUM(total_price) AS new_total
+    FROM hotel_booking.booking_rooms
+    GROUP BY booking_id
+) sub
+WHERE b.booking_id = sub.booking_id;
+
+-- PART 5: DELETE
+
+-- cancelled bookings older than 90 days are removed
+-- rollback keeps demo data safe
+BEGIN;
+
+DELETE FROM hotel_booking.bookings
+WHERE status = 'cancelled'
+RETURNING booking_id, guest_id;
+
+ROLLBACK;
+
+-- PART 6: GRANT / REVOKE
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT FROM pg_roles
+        WHERE rolname = 'hotel_readonly'
+    ) THEN
+
+        REASSIGN OWNED BY hotel_readonly TO CURRENT_USER;
+        DROP OWNED BY hotel_readonly;
+        DROP ROLE hotel_readonly;
+
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM pg_roles
+        WHERE rolname = 'hotel_writer'
+    ) THEN
+
+        REASSIGN OWNED BY hotel_writer TO CURRENT_USER;
+        DROP OWNED BY hotel_writer;
+        DROP ROLE hotel_writer;
+
+    END IF;
+END $$;
+
+CREATE ROLE hotel_readonly;
+CREATE ROLE hotel_writer;
+
+GRANT USAGE ON SCHEMA hotel_booking
+TO hotel_readonly, hotel_writer;
+
+GRANT SELECT
+ON ALL TABLES IN SCHEMA hotel_booking
+TO hotel_readonly;
+
+GRANT INSERT, UPDATE
+ON hotel_booking.bookings
+TO hotel_writer;
+
+-- hotel_writer should not modify existing bookings
+-- corrections are handled by managers only
+REVOKE UPDATE
+ON hotel_booking.bookings
+FROM hotel_writer;
